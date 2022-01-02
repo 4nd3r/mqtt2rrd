@@ -1,0 +1,13 @@
+{
+    "title": "mqtt2rrd",
+    "base": "/",
+    "data": {
+        "outside_temperature": 1,
+        "outside_humidity": 0,
+        "living_room_temperature": 1,
+        "living_room_humidity": 0,
+        "living_room_co2": 1,
+        "electricity_price": 1,
+        "water_heater_power": 1
+    }
+}

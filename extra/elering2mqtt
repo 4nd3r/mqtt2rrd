@@ -1,0 +1,32 @@
+#!/bin/sh -e
+
+nps_price_ee_current="$( curl -sS 'https://dashboard.elering.ee/api/nps/price/EE/current' )"
+
+system="$( curl -sS 'https://dashboard.elering.ee/api/system/latest' )"
+
+__pub()
+{
+    if [ -z "$ELERING2MQTT_BROKER" ]
+    then
+        ELERING2MQTT_BROKER='localhost'
+    fi
+
+    if [ -z "$2" ]
+    then
+        return
+    fi
+
+    mosquitto_pub -h "$ELERING2MQTT_BROKER" -t "elering/$1" -m "$2"
+}
+
+__pub 'nps/price/EE/current/price' "$( echo "$nps_price_ee_current" | jq '.data[].price' )"
+
+__pub 'nps/price/EE/current/timestamp' "$( echo "$nps_price_ee_current" | jq '.data[].timestamp' )"
+
+__pub 'system/latest/consumption' "$( echo "$system" | jq .data[].consumption )"
+
+__pub 'system/latest/production' "$( echo "$system" | jq .data[].production )"
+
+__pub 'system/latest/production_renewable' "$( echo "$system" | jq .data[].production_renewable )"
+
+__pub 'system/latest/system_balance' "$( echo "$system" | jq .data[].system_balance )"

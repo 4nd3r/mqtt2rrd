@@ -1,0 +1,266 @@
+#!/bin/sh -e
+
+if [ -z "$MQTT2RRD_BROKER" ]
+then
+    MQTT2RRD_BROKER='localhost'
+fi
+
+if [ -z "$MQTT2RRD_DATABASES" ]
+then
+    MQTT2RRD_DATABASES='rrd'
+fi
+
+if [ -z "$MQTT2RRD_GRAPHS" ]
+then
+    MQTT2RRD_GRAPHS='public'
+fi
+
+for dir in \
+    "$MQTT2RRD_DATABASES/by-id" \
+    "$MQTT2RRD_DATABASES/by-name" \
+    "$MQTT2RRD_GRAPHS"
+do
+    if [ ! -d "$dir" ]
+    then
+        mkdir -p "$dir"
+    fi
+done
+
+if [ -n "$MQTT2RRD_DRYRUN" ]
+then
+    echo 'DRY RUN!'
+    MQTT2RRD_DEBUG=1
+fi
+
+__debug()
+{
+    if [ -n "$MQTT2RRD_DEBUG" ]
+    then
+        echo "$1"
+    fi
+}
+
+__rrd_id()
+{
+    echo "$1" \
+        | sed 's/\.rrd$//' \
+        | tr -c '[:alnum:]' '_' \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/_*$/\n/'
+}
+
+__rrd_path_by_id()
+{
+    printf '%s/by-id/%s.rrd\n' \
+        "$MQTT2RRD_DATABASES" \
+        "$( __rrd_id "$1" )"
+}
+
+__rrd_path_by_name()
+{
+    printf '%s/by-name/%s.rrd\n' \
+        "$MQTT2RRD_DATABASES" \
+        "$( __rrd_id "$1" )"
+}
+
+__config()
+{
+    if [ -z "$1" ] || [ -z "$2" ] || ! echo "$3" | grep -Exq '(GAUGE|COUNTER)'
+    then
+        echo "Usage: mqtt2rrd config <mqtt_topic> <database_name> <GAUGE|COUNTER>"
+        return
+    fi
+
+    rrd_path_by_id="$( __rrd_path_by_id "$1" )"
+
+    rrd_path_by_name="$( __rrd_path_by_name "$2" )"
+
+    if [ -f "$rrd_path_by_name" ]
+    then
+        echo "Database '$rrd_path_by_name' already exists."
+    else
+        if [ -z "$MQTT2RRD_DRYRUN" ]
+        then
+            rrdtool create "$rrd_path_by_name" \
+                --step 300 \
+                "DS:data:$3:1800:U:U" \
+                'RRA:AVERAGE:0.5:1:525960'
+        fi
+
+        echo "Database '$rrd_path_by_name' created."
+    fi
+
+    if [ -h "$rrd_path_by_id" ]
+    then
+        echo "Symbolic link '$rrd_path_by_id' already exists."
+    else
+        rrd_path_by_id_dirname="$( dirname "$rrd_path_by_id" )"
+
+        rrd_path_by_name_relative="$( realpath \
+            --relative-to="$rrd_path_by_id_dirname" \
+            "$rrd_path_by_name" )"
+
+        if [ -z "$MQTT2RRD_DRYRUN" ]
+        then
+            ln -s "$rrd_path_by_name_relative" "$rrd_path_by_id"
+        fi
+
+        echo "Symbolic link '$rrd_path_by_id' created."
+    fi
+}
+
+__list()
+{
+    find "$MQTT2RRD_DATABASES/by-id/" -type l -printf '%f;%l\n' \
+        | while read -r l
+    do
+        rrd_path_by_id="$( __rrd_path_by_id "$( echo "$l" | cut -d ';' -f 1 )" )"
+
+        rrd_path_by_name="$( __rrd_path_by_name "$( basename "$( echo "$l" | cut -d ';' -f 2 )" )" )"
+
+        rrd_name="$( basename "$rrd_path_by_name" | sed 's/\.rrd$//' )"
+
+        graph_prefix="$MQTT2RRD_GRAPHS/$rrd_name"
+
+        graph_title="$( echo "$rrd_name" | tr '_' ' ' )"
+
+        echo "$rrd_path_by_id;$rrd_path_by_name;$rrd_name;$graph_prefix;$graph_title"
+    done \
+        | sort
+}
+
+__list_cache="$( __list )"
+
+__update()
+{
+    rrd_path_by_id="$( __rrd_path_by_id "$1" )"
+
+    if ! rrd="$( echo "$__list_cache" | grep -F "$rrd_path_by_id;" )"
+    then
+        __debug "Topic '$1' is not configured."
+        return
+    fi
+
+    if ! echo "$2" | grep -Exq '[0-9\.\-]+'
+    then
+        __debug "Payload '$2' is not numeric."
+        return
+    fi
+
+    rrd_path_by_name="$( echo "$rrd" | cut -d ';' -f 2 )"
+
+    if ! rrd_info="$( rrdtool info "$rrd_path_by_name" )"
+    then
+        return
+    fi
+
+    if echo "$rrd_info" | grep -Fq 'type = "GAUGE"'
+    then
+        rrd_data="$( printf '%.2f' "$2" )"
+    else
+        rrd_data="$( printf '%.0f' "$2" )"
+    fi
+
+    if [ "$rrd_data" = '0.00' ] || [ "$rrd_data" = '-0.00' ]
+    then
+        rrd_data=0
+    fi
+
+    if [ -z "$MQTT2RRD_DRYRUN" ]
+    then
+        if ! rrd_update="$( rrdtool updatev "$rrd_path_by_name" "N:$rrd_data" )"
+        then
+            return
+        fi
+    fi
+
+    if [ "$( echo "$rrd_update" | wc -l )" -gt 1 ] || [ -n "$MQTT2RRD_DRYRUN" ]
+    then
+        __debug "Database '$rrd_path_by_name' updated with '$rrd_data'."
+
+        graph_prefix="$( echo "$rrd" | cut -d ';' -f 4 )"
+
+        if [ -z "$MQTT2RRD_DRYRUN" ]
+        then
+            printf '%s' "$rrd_data" > "$graph_prefix.last"
+        fi
+
+        __graph "$rrd"
+    fi
+}
+
+__graph()
+{
+    rrd_path_by_name="$( echo "$1" | cut -d ';' -f 2 )"
+
+    graph_prefix="$( echo "$1" | cut -d ';' -f 4 )"
+
+    graph_title="$( echo "$1" | cut -d ';' -f 5 )"
+
+    for graph_config in 'day;-86400' 'week;-604800' 'month;-2592000'
+    do
+        graph_period="$( echo "$graph_config" | cut -d ';' -f 1 )"
+
+        graph_start="$( echo "$graph_config" | cut -d ';' -f 2 )"
+
+        graph_file="${graph_prefix}_${graph_period}.svg"
+
+        graph_timestamp="$( date -R | sed 's/:/\\:/g' )"
+
+        if [ -z "$MQTT2RRD_DRYRUN" ]
+        then
+            if ! rrdtool graph "$graph_file" \
+                --title "$graph_title ($graph_period)" \
+                --start "$graph_start" \
+                --end now \
+                --imgformat SVG \
+                --width 600 \
+                --height 200 \
+                --border 0 \
+                --color 'BACK#FFFFFF00' \
+                --units-exponent 0 \
+                --left-axis-format '%.0lf' \
+                --right-axis '1:0' \
+                --right-axis-format '%.0lf' \
+                --slope-mode \
+                "DEF:data=$rrd_path_by_name:data:AVERAGE" \
+                'LINE1:data#FF0000' \
+                "COMMENT:$graph_timestamp" \
+                'GPRINT:data:LAST:last\: %.2lf' \
+                'GPRINT:data:AVERAGE:avg\: %.2lf' \
+                'GPRINT:data:MIN:min\: %.2lf' \
+                'GPRINT:data:MAX:max\: %.2lf' \
+                > /dev/null
+            then
+                continue
+            fi
+        fi
+
+        __debug "Database '$rrd_path_by_name' graphed to '$graph_file'."
+    done
+}
+
+__main()
+{
+    mosquitto_sub -h "$MQTT2RRD_BROKER" -t '#' -F '%t;%p' \
+        | while read -r line
+    do
+        if [ -z "$line" ] || ! echo "$line" | grep -Fq ';'
+        then
+            continue
+        fi
+
+        __update \
+            "$( echo "$line" | cut -d ';' -f 1 )" \
+            "$( echo "$line" | cut -d ';' -f 2 )"
+    done
+}
+
+if [ -n "$1" ]
+then
+    func="__$1"
+    shift
+    "$func" "$@"
+else
+    __main
+fi

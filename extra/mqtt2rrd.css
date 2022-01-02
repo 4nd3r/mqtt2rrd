@@ -1,0 +1,8 @@
+body { font: 1.1em monospace; margin: 1em; margin-bottom: 10em; }
+a { color: blue; text-decoration: none; }
+a:hover { color: red; }
+th, td { white-space: nowrap; }
+th { text-align: right; }
+td { padding-left: 1em; vertical-align: middle; }
+td.value { text-align: right; }
+td.graph img.small { height: 3em; }

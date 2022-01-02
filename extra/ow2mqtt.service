@@ -1,0 +1,6 @@
+[Unit]
+Description=ow2mqtt
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ow2mqtt

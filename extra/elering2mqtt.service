@@ -1,0 +1,6 @@
+[Unit]
+Description=elering2mqtt
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/elering2mqtt

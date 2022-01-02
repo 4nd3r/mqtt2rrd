@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <link rel="stylesheet" href="mqtt2rrd.css">
+        <title>mqtt2rrd</title>
+    </head>
+    <body>
+        <table id="data"></table>
+        <p><a href="#" id="toggle_hidden">⬇️</a></p>
+        <script src="jquery.js"></script>
+        <script>
+            try { $().jquery } catch { alert("missing jquery.js"); }
+            $.getJSON("mqtt2rrd.json", function(config) {
+                if ("title" in config) {
+                    $("title").html(config["title"]);
+                }
+                $.each(config["data"], function(name, show) {
+                    $("#data").append(`<tr id="${name}">
+                        <th class="name">${name.replace(/_[a-z0-9]+$/, "").replace("_", " ")}</th>
+                        <td class="value">?</td>
+                        <td class="graph"><img src="${config["base"]}${name}_day.svg" class="small"></td>
+                        <td class="graph"><img src="${config["base"]}${name}_week.svg" class="small"></td>
+                        <td class="graph"><img src="${config["base"]}${name}_month.svg" class="small"></td>
+                        </td>
+                    </tr>`);
+                    if (show == "0") {
+                        $(`#${name}`).addClass("hidden");
+                        $(`#${name}`).hide();
+                    }
+                    $.get(`${config["base"]}${name}.last`, function(value) {
+                        value = Math.round(value)
+                        if (name.match(/_temperature$/)) {
+                            value += " °C";
+                        } else if (name.match(/_humidity$/)) {
+                            value += " %";
+                        } else if (name.match(/_co2$/)) {
+                            value += " ppm";
+                        } else if (name.match(/_power$/)) {
+                            value += " W";
+                        } else if (name.match(/_price$/)) {
+                            value += " €";
+                        }
+                        $(`#${name} .value`).html(value);
+                    });
+                    $(`#${name} .graph img`).click(function() {
+                        $(this).toggleClass("small");
+                    });
+                });
+            });
+            $("#toggle_hidden").click(function() {
+                $(".hidden").toggle();
+                if ($(this).html() == "⬇️") {
+                    $(this).html("⬆️");
+                } else {
+                    $(this).html("⬇️");
+                }
+                return false;
+            });
+        </script>
+    </body>
+</html>

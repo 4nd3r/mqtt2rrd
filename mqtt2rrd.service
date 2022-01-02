@@ -1,0 +1,14 @@
+[Unit]
+Description=mqtt2rrd
+After=network.target
+
+[Service]
+User=mqtt2rrd
+Group=users
+WorkingDirectory=/home/mqtt2rrd
+ExecStart=/usr/local/bin/mqtt2rrd
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
