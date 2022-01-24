@@ -51,3 +51,7 @@ foo_bar_baz_topic
 Topics from broker are matched with same function.
 
 Database file name (without extension) is used as graph title.
+
+## Using with Zigbee2MQTT
+
+Go to *Settings* -> *Experimental* and set *MQTT output type* to `attribute`.
