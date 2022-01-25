@@ -33,18 +33,18 @@ No whitespace or use quoting, but `<mqtt_topic>` and `<database_name>` will be "
 
 ```sh
 $ ls -l rrd/*/*toilet* | grep -o 'rrd/.*'
-rrd/by-id/zigbee2mqtt_toilet_humidity.rrd -> ../by-name/toilet_humidity.rrd
-rrd/by-id/zigbee2mqtt_toilet_temperature.rrd -> ../by-name/toilet_temperature.rrd
 rrd/by-name/toilet_humidity.rrd
 rrd/by-name/toilet_temperature.rrd
+rrd/by-topic/zigbee2mqtt_toilet_humidity.rrd -> ../by-name/toilet_humidity.rrd
+rrd/by-topic/zigbee2mqtt_toilet_temperature.rrd -> ../by-name/toilet_temperature.rrd
 ```
 
 ## About file names
 
-File names are created (aka normalized) using `__rrd_id` function:
+File names are created using `__normalize` function:
 
 ```sh
-$ mqtt2rrd rrd_id 'foo BAR/baz-topic'
+$ mqtt2rrd normalize 'foo BAR/baz-topic'
 foo_bar_baz_topic
 ```
 

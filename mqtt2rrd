@@ -16,7 +16,7 @@ then
 fi
 
 for dir in \
-    "$MQTT2RRD_DATABASES/by-id" \
+    "$MQTT2RRD_DATABASES/by-topic" \
     "$MQTT2RRD_DATABASES/by-name" \
     "$MQTT2RRD_GRAPHS"
 do
@@ -40,7 +40,7 @@ __debug()
     fi
 }
 
-__rrd_id()
+__normalize()
 {
     echo "$1" \
         | sed 's/\.rrd$//' \
@@ -49,18 +49,18 @@ __rrd_id()
         | sed 's/_*$/\n/'
 }
 
-__rrd_path_by_id()
+__rrd_path_by_topic()
 {
-    printf '%s/by-id/%s.rrd\n' \
+    printf '%s/by-topic/%s.rrd\n' \
         "$MQTT2RRD_DATABASES" \
-        "$( __rrd_id "$1" )"
+        "$( __normalize "$1" )"
 }
 
 __rrd_path_by_name()
 {
     printf '%s/by-name/%s.rrd\n' \
         "$MQTT2RRD_DATABASES" \
-        "$( __rrd_id "$1" )"
+        "$( __normalize "$1" )"
 }
 
 __config()
@@ -71,7 +71,7 @@ __config()
         return
     fi
 
-    rrd_path_by_id="$( __rrd_path_by_id "$1" )"
+    rrd_path_by_topic="$( __rrd_path_by_topic "$1" )"
 
     rrd_path_by_name="$( __rrd_path_by_name "$2" )"
 
@@ -90,31 +90,31 @@ __config()
         echo "Database '$rrd_path_by_name' created."
     fi
 
-    if [ -h "$rrd_path_by_id" ]
+    if [ -h "$rrd_path_by_topic" ]
     then
-        echo "Symbolic link '$rrd_path_by_id' already exists."
+        echo "Symbolic link '$rrd_path_by_topic' already exists."
     else
-        rrd_path_by_id_dirname="$( dirname "$rrd_path_by_id" )"
+        rrd_path_by_topic_dirname="$( dirname "$rrd_path_by_topic" )"
 
         rrd_path_by_name_relative="$( realpath \
-            --relative-to="$rrd_path_by_id_dirname" \
+            --relative-to="$rrd_path_by_topic_dirname" \
             "$rrd_path_by_name" )"
 
         if [ -z "$MQTT2RRD_DRYRUN" ]
         then
-            ln -s "$rrd_path_by_name_relative" "$rrd_path_by_id"
+            ln -s "$rrd_path_by_name_relative" "$rrd_path_by_topic"
         fi
 
-        echo "Symbolic link '$rrd_path_by_id' created."
+        echo "Symbolic link '$rrd_path_by_topic' created."
     fi
 }
 
 __list()
 {
-    find "$MQTT2RRD_DATABASES/by-id/" -type l -printf '%f;%l\n' \
+    find "$MQTT2RRD_DATABASES/by-topic/" -type l -printf '%f;%l\n' \
         | while read -r l
     do
-        rrd_path_by_id="$( __rrd_path_by_id "$( echo "$l" | cut -d ';' -f 1 )" )"
+        rrd_path_by_topic="$( __rrd_path_by_topic "$( echo "$l" | cut -d ';' -f 1 )" )"
 
         rrd_path_by_name="$( __rrd_path_by_name "$( basename "$( echo "$l" | cut -d ';' -f 2 )" )" )"
 
@@ -124,7 +124,7 @@ __list()
 
         graph_title="$( echo "$rrd_name" | tr '_' ' ' )"
 
-        echo "$rrd_path_by_id;$rrd_path_by_name;$rrd_name;$graph_prefix;$graph_title"
+        echo "$rrd_path_by_topic;$rrd_path_by_name;$rrd_name;$graph_prefix;$graph_title"
     done \
         | sort
 }
@@ -133,9 +133,9 @@ __list_cache="$( __list )"
 
 __update()
 {
-    rrd_path_by_id="$( __rrd_path_by_id "$1" )"
+    rrd_path_by_topic="$( __rrd_path_by_topic "$1" )"
 
-    if ! rrd="$( echo "$__list_cache" | grep -F "$rrd_path_by_id;" )"
+    if ! rrd="$( echo "$__list_cache" | grep -F "$rrd_path_by_topic;" )"
     then
         __debug "Topic '$1' is not configured."
         return
