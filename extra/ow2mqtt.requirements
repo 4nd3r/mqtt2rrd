@@ -1,2 +1,3 @@
+# depends on libow-dev
 onewire
 paho-mqtt
