@@ -21,7 +21,7 @@
                 }
                 $.each(config["data"], function(name, show) {
                     $("#data").append(`<tr id="${name}">
-                        <th class="name">${name.replace(/_[a-z0-9]+$/, "").replace("_", " ")}</th>
+                        <th class="name">${name.replace(/_[a-z0-9]+$/, "").replace(/_/g, " ")}</th>
                         <td class="value">?</td>
                         <td class="graph"><img src="${config["base"]}${name}_day.svg" class="small"></td>
                         <td class="graph"><img src="${config["base"]}${name}_week.svg" class="small"></td>
